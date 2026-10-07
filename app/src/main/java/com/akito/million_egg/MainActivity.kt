@@ -20,7 +20,7 @@ enum class Screen {
 }
 
 // スクリーンショット撮影等でバナー広告を非表示にする場合は false にする
-private const val SHOW_BANNER_AD = false
+private const val SHOW_BANNER_AD = true
 
 class MainActivity : ComponentActivity() {
     private var interstitialCounter = 0
