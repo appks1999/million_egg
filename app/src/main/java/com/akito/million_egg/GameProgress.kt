@@ -11,5 +11,6 @@ data class GameProgress(
     val totalDamage: Long = 0L,
     val tapCount: Long = 0L,
     val isCleared: Boolean = false,
-    val startDateMillis: Long = System.currentTimeMillis()
+    val startDateMillis: Long = System.currentTimeMillis(),
+    val hasSeenEnding: Boolean = false
 )

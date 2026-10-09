@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(innerPadding),
                                 viewModel = viewModel,
                                 onNavigateToTitles = { screenState = Screen.Titles },
+                                onNavigateToClear = { screenState = Screen.Clear },
                                 onShowRewardedAd = showRewardedAd
                             )
                         }
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(innerPadding),
                                 viewModel = viewModel,
                                 onNavigateToTitles = { screenState = Screen.Titles },
+                                onNavigateToClear = { screenState = Screen.Clear },
                                 onShowRewardedAd = showRewardedAd
                             )
                         }
@@ -113,11 +115,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // クリア状態を監視して自動遷移
+                // クリア状態（かつエンディング未視聴）を監視して初回のみ自動遷移
                 val progress by viewModel.progress.collectAsState()
-                LaunchedEffect(progress.isCleared) {
-                    if (progress.isCleared && screenState != Screen.Clear) {
+                LaunchedEffect(progress.isCleared, progress.hasSeenEnding) {
+                    if (progress.isCleared && !progress.hasSeenEnding && screenState != Screen.Clear) {
                         screenState = Screen.Clear
+                        viewModel.markEndingAsSeen()
                     }
                 }
             }

@@ -1,6 +1,7 @@
 package com.akito.million_egg
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -94,7 +95,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             earnedGold = Random.nextLong(10, 31)
         } else if (isCritical) {
             audioManager.playSound("critical")
-            damage *= 2
+            val multiplier = Random.nextDouble(1.5, 2.0)
+            val baseDamage = damage
+            damage = kotlin.math.round(damage * multiplier).toLong().coerceAtLeast(damage + 1)
+            Log.d("GameViewModel", "Critical Hit! Multiplier: %.2fx (Base: %d -> Final: %d)".format(multiplier, baseDamage, damage))
             viewModelScope.launch {
                 _criticalHitEvent.emit(CriticalHitEvent(offset))
             }
@@ -105,12 +109,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             audioManager.playSound("tap")
             // 金の卵確率
-            if (Random.nextDouble() < 0.01) { // テスト用100%
-                earnedGold = Random.nextLong(1, 11)
+            if (Random.nextDouble() < 0.02) { // テスト用100%
+                earnedGold = Random.nextLong(1, 21)
                 audioManager.playSound("coin")
             }
             // フィーバー突入判定
-            if (Random.nextDouble() < 0.0005) {
+            if (Random.nextDouble() < 0.00025) {
                 startFever()
             }
         }
@@ -153,7 +157,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startFever() {
         viewModelScope.launch {
-            _feverCountdown.value = 15
+            _feverCountdown.value = 10
             while (_feverCountdown.value > 0) {
                 delay(1000)
                 _feverCountdown.value -= 1
@@ -187,6 +191,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun markEndingAsSeen() {
+        viewModelScope.launch {
+            progressStore.updateData { it.copy(hasSeenEnding = true) }
+        }
+    }
+
     /**
      * 強くてニューゲーム：ステータスや累計ダメージを引き継ぎ、残りタップ数を100万回にリセットし、開始日時を更新する
      */
@@ -196,7 +206,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     remainingTaps = 1_000_000L,
                     isCleared = false,
-                    startDateMillis = System.currentTimeMillis()
+                    startDateMillis = System.currentTimeMillis(),
+                    hasSeenEnding = false
                 )
             }
         }
@@ -238,10 +249,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             // デバッグ時は中央付近をダミー座標として渡す
             val dummyOffset = Offset(540f, 1000f)
             _criticalHitEvent.emit(CriticalHitEvent(dummyOffset))
-            // ダメージも与える
+            // ダメージも与える (1.5倍〜2.0倍のランダム倍率)
             val currentState = _playerState.value
             val (powerBonus, _) = calculateTitleBonuses()
-            updateProgress((currentState.tapPower + powerBonus) * 2L, isManualTap = true)
+            val baseDamage = (currentState.tapPower + powerBonus).toDouble()
+            val multiplier = Random.nextDouble(1.5, 2.0)
+            val critDamage = kotlin.math.round(baseDamage * multiplier).toLong().coerceAtLeast(1L)
+            Log.d("GameViewModel", "[Debug] Critical Hit! Multiplier: %.2fx (Base: %.0f -> Final: %d)".format(multiplier, baseDamage, critDamage))
+            updateProgress(critDamage, isManualTap = true)
         }
     }
 

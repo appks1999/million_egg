@@ -1,21 +1,23 @@
 # Add project specific ProGuard rules here.
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep Kotlinx Serialization & DataStore Models
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+-keepclassmembers class * {
+    @kotlinx.serialization.SerialName <fields>;
+    @kotlinx.serialization.Serializable <fields>;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+-keepclassmembers class com.akito.million_egg.GameProgress { *; }
+-keepclassmembers class com.akito.million_egg.PlayerState { *; }
+-keepclassmembers class com.akito.million_egg.Title { *; }
+
+# Keep Google Play Services Ads (AdMob)
+-keep class com.google.android.gms.ads.** {
+    public *;
+}
+-keep interface com.google.android.gms.ads.** {
+    public *;
+}

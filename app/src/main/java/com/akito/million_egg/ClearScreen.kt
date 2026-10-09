@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.akito.million_egg.ui.AutoResizedText
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -106,9 +107,16 @@ fun ClearScreen(
                 Button(
                     onClick = onRestart,
                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
                     modifier = Modifier.padding(bottom = 20.dp)
                 ) {
-                    Text("トップに戻る")
+                    AutoResizedText(
+                        text = "トップに戻る",
+                        color = Color.Black,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
                 }
             }
             
@@ -123,9 +131,25 @@ fun StatRow(label: String, value: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, color = Color.Gray, fontSize = 16.sp)
-        Text(text = value, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        AutoResizedText(
+            text = label,
+            color = Color.Gray,
+            fontSize = 16.sp,
+            maxLines = 1,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        AutoResizedText(
+            text = value,
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            modifier = Modifier.weight(1f, fill = false)
+        )
     }
 }

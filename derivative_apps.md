@@ -10,8 +10,8 @@
    * **画像**: 卵から「スイカ」「金庫」「モンスター」などに変更（`res/drawable/`）。
    * **音**: タップ音やクリア音を変更（`res/raw/`）。
    * **名前・数**: アプリ名、アイコン、目標タップ数（10万回など）、称号テキストを変更。
-3. **データ混同と広告IDに注意する**
-   * 保存ファイル名（`json`）と AdMob 広告IDを新アプリ用に変更します。
+3. **データ混同・ProGuard難読化・広告IDに注意する**
+   * 保存ファイル名（`json`）、パッケージ変更時の `proguard-rules.pro` 設定、および AdMob 広告IDを新アプリ用に変更します。
 
 ---
 
@@ -24,8 +24,9 @@ graph TD
     A[1. プロジェクト複製 & パッケージ名変更] --> B[2. アプリ名 & アイコン差し替え]
     B --> C[3. 画像・音声アセットの差し替え]
     C --> D[4. 数値バランス・称号データの調整]
-    D --> E[5. AdMob 広告IDの更新]
-    E --> F[6. ビルド & 動作検証]
+    D --> E[5. ProGuard難読化ルールの更新]
+    E --> F[6. AdMob 広告IDの更新]
+    F --> G[7. ビルド & 動作検証]
 ```
 
 ---
@@ -84,12 +85,16 @@ graph TD
 * `game_clear.mp3` : クリア（エンドロール）時のBGM/サウンド
 
 #### Step 5. ゲームバランス・称号データの調整
-1. **初期カウント数の変更** (`GameProgress.kt`):
+1. **初期カウント数およびエンディング制御プロパティ** (`GameProgress.kt`):
    ```kotlin
    @Serializable
    data class GameProgress(
        val remainingTaps: Long = 100_000L, // 例: 10万回に変更
-       // ...
+       val totalDamage: Long = 0L,
+       val tapCount: Long = 0L,
+       val isCleared: Boolean = false,
+       val startDateMillis: Long = System.currentTimeMillis(),
+       val hasSeenEnding: Boolean = false // エンディング視聴済みフラグ
    )
    ```
 2. **称号（アチーブメント）の書き換え** (`PlayerState.kt`):
@@ -101,7 +106,15 @@ graph TD
    )
    ```
 
-#### Step 6. AdMob 広告IDの更新
+#### Step 6. ProGuard 難読化保護ルールのパッケージ名更新 (`app/proguard-rules.pro`)
+パッケージ名を新アプリ（例: `com.akito.watermelon_tap`）に変更した場合、DataStoreモデルが難読化で壊れないよう ProGuard ルールのパッケージパスを新パッケージ名へ更新します：
+```proguard
+-keepclassmembers class com.akito.watermelon_tap.GameProgress { *; }
+-keepclassmembers class com.akito.watermelon_tap.PlayerState { *; }
+-keepclassmembers class com.akito.watermelon_tap.Title { *; }
+```
+
+#### Step 7. AdMob 広告IDの更新
 1. **ManifestのApp ID** (`app/src/main/AndroidManifest.xml`):
    ```xml
    <meta-data
@@ -117,8 +130,10 @@ graph TD
 
 - [ ] パッケージ名・ApplicationId が変更されているか
 - [ ] DataStore のファイル名（.json）がユニークになっているか
+- [ ] `proguard-rules.pro` の DataStore クラス保持パスが新パッケージ名に合致しているか
 - [ ] アプリ名・アイコン画像が正常に表示されるか
 - [ ] オブジェクト画像（ダメージ変化）が正常に切り替わるか
 - [ ] 全効果音が正常に鳴るか
 - [ ] カウント0でクリア画面・エンドロール・BGMが正常に再生されるか
+- [ ] 再起動時にクリア画面が重複再生されず、リセットダイアログから再視聴できるか
 - [ ] AdMob 広告が正常に読み込まれるか

@@ -30,44 +30,77 @@
 
 | コンポーネント | ファイルパス | 役割・概要 |
 | :--- | :--- | :--- |
-| **画面制御** | `MainActivity.kt` | 画面遷移（`Game` / `Titles` / `Clear`）、Scaffold、バナー広告表示制御 (`SHOW_BANNER_AD`) |
-| **状態・ロジック** | `GameViewModel.kt` | ゲーム状態保持、タップ計算、DataStore更新、`startNewGamePlus()`、`resetGame()` |
-| **メインUI** | `GameScreen.kt` | 卵タップアニメーション、演出エフェクト、ステータス強化、リセットダイアログ (`showResetDialog`)、デバッグフラグ (`SHOW_DEBUG_MENU`) |
+| **画面制御** | `MainActivity.kt` | 画面遷移（`Game` / `Titles` / `Clear`）、初回限定エンディング自動遷移（`hasSeenEnding` 判定）、Scaffold、バナー広告表示制御 (`SHOW_BANNER_AD`) |
+| **状態・ロジック** | `GameViewModel.kt` | ゲーム状態保持、タップ計算、クリティカルダメージ計算（ランダム 1.5〜2.0倍、Logcat出力）、DataStore更新、`startNewGamePlus()`、`resetGame()` |
+| **メインUI** | `GameScreen.kt` | 卵タップエリア固定化（上部 70% 領域・非スクロール）、下部強化メニュー（30% 領域・スクロール可）、立体ドロップシャドウ境界線、リセットダイアログ（「もう一度エンディングを見る」メニュー含む） |
+| **自動テキストUI** | `AutoResizedText.kt` | 文字溢れ防止用汎用テキストコンポーネント（小画面やフォント拡大時に自動スケーリング） |
 | **クリア画面** | `ClearScreen.kt` | 100万タップ達成時のエンドロール、プレイ統計表示、`game_clear` 音声自動再生 |
-| **称号画面** | `TitlesScreen.kt` | 称号一覧・アチーブメント進捗・各種ステータスボーナス表示 |
-| **永続化データ** | `GameProgress.kt`<br>`PlayerState.kt` | 残りタップ数・累計ダメージ、ゴールド・各強化レベル・称号データ（Jetpack DataStoreで保存） |
+| **称号画面** | `TitlesScreen.kt` | 称号一覧・アチーブメント進捗・各種ステータスボーナス表示（`FlowRow` によるバッジ折返し対応） |
+| **永続化データ** | `GameProgress.kt`<br>`PlayerState.kt` | 残りタップ数・累計ダメージ、ゴールド・各強化レベル・称号データ・エンディング視聴済みフラグ `hasSeenEnding`（DataStore保存） |
 | **音声管理** | `AudioManager.kt` | `SoundPool` を使用した効果音（tap, critical, fever, coin, status_up, game_clear）再生 |
 | **広告管理** | `AdManager.kt` | AdMobバナー広告、インタースティシャル広告、リワード広告の読み込み・表示 |
 
 ---
 
-### 3. 改修時のチェックリストと注意事項
+### 3. ゲーム仕様・バランス
+
+1. **クリティカルヒット**:
+   * 発生率: 初期 1% 〜 最大 100%（ステータス強化および称号ボーナスで増加）。
+   * ダメージ倍率: **ランダム 1.5倍 〜 2.0倍**（発生時に `Log.d("GameViewModel", ...)` へログ出力）。
+2. **フィーバータイム**:
+   * 突入率: 通常タップ時 **0.025%** (`0.00025`)。
+   * 継続時間: **10秒**。
+   * 獲得ゴールド: 1タップあたり **10 G 〜 30 G**。
+3. **エンディング表示制御**:
+   * カウント0達成時、初回のみ自動でエンドロールへ遷移し `hasSeenEnding = true` を永続化。
+   * 以降はアプリ再起動時も自動遷移せず、リセットダイアログの「もう一度エンディングを見る」ボタンから任意で閲覧可能。
+
+---
+
+### 4. 改修時のチェックリストと注意事項
 
 #### A. DataStore（データ永続化）の互換性
-* `GameProgress` および `PlayerState` の既存プロパティの削除・型変更は禁止（既存ユーザーデータの読み込みエラーを防ぐため）。
-* プロパティを追加する場合は、必ずデフォルト値を設定すること。
+* `GameProgress` (`remainingTaps`, `totalDamage`, `tapCount`, `isCleared`, `startDateMillis`, `hasSeenEnding`) および `PlayerState` の既存プロパティの削除・型変更は禁止（既存ユーザーデータの読み込みエラーを防ぐため）。
+* プロパティを追加する場合は、必ずデフォルト値を設定すること（例: `hasSeenEnding: Boolean = false`）。
 
-#### B. 音声リソース（res/raw）
+#### B. Google Play Console 要求の DEX コード最適化（難読化 100%）設定
+* `app/build.gradle.kts`:
+  ```kotlin
+  buildTypes {
+      release {
+          isMinifyEnabled = true
+          isShrinkResources = true
+          proguardFiles(
+              getDefaultProguardFile("proguard-android-optimize.txt"),
+              "proguard-rules.pro"
+          )
+      }
+  }
+  ```
+* `app/proguard-rules.pro`:
+  DataStore 保存モデルおよび AdMob SDK が難読化で不具合を起こさないよう保護ルールを記述すること。
+
+#### C. 音声リソース（res/raw）
 * 新しい効果音を追加する場合は `res/raw/` にファイルを配置し、`AudioManager.kt` の `soundMap` に登録すること。
 
-#### C. 広告（AdMob）設定
+#### D. 広告（AdMob）設定
 * フラグ切り替え：
   * バナー広告のオン/オフ: `MainActivity.kt` の `SHOW_BANNER_AD`
   * デバッグメニューの表示/非表示: `GameScreen.kt` の `SHOW_DEBUG_MENU`
 
-#### D. ビルド・テスト検証手順
+#### E. ビルド・テスト検証手順
 改修後は必ず以下のコマンドを実行し、エラーが発生しないことを確認すること：
 ```powershell
 # デバッグビルドの確認
 ./gradlew app:assembleDebug
 
-# ユニットテストの実行
-./gradlew app:testDebugUnitTest
+# リリース最適化ビルドの確認
+./gradlew app:assembleRelease
 ```
 
 ---
 
-### 4. 承認・開発ワークフロー
+### 5. 承認・開発ワークフロー
 
 1. **改修内容の把握**: 依頼内容を確認する。
 2. **変更範囲の整理**: 既存コードの変更が必要か確認する。

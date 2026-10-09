@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.akito.million_egg.ui.AutoResizedText
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,11 +53,12 @@ fun TitlesScreen(
                         Text("◀", fontSize = 18.sp, color = Color.Black) 
                     }
                     
-                    Text(
+                    AutoResizedText(
                         text = "アチーブメント",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.Black,
+                        maxLines = 1,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
@@ -147,6 +149,7 @@ fun AchievementProgressHeader(percent: Int) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TitleItem(title: Title, isUnlocked: Boolean) {
     Card(
@@ -175,29 +178,36 @@ fun TitleItem(title: Title, isUnlocked: Boolean) {
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                AutoResizedText(
                     text = title.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isUnlocked) Color.Black else Color.Gray
+                    color = if (isUnlocked) Color.Black else Color.Gray,
+                    maxLines = 1
                 )
-                Text(
+                AutoResizedText(
                     text = "累計ダメージ ${String.format(Locale.getDefault(), "%,d", title.requirement)} 達成",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.DarkGray
+                    color = Color.DarkGray,
+                    maxLines = 1
                 )
                 
-                // ボーナス表示
-                Row(modifier = Modifier.padding(top = 4.dp)) {
+                // ボーナス表示（FlowRowで狭い画面でも安全に折返し）
+                FlowRow(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     if (title.powerBonus > 0) {
                         BonusBadge("パワー +${title.powerBonus}")
                     }
                     if (title.criticalBonus > 0.0) {
-                        Spacer(modifier = Modifier.width(8.dp))
                         BonusBadge("クリティカル +${(title.criticalBonus * 100).toInt()}%")
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
 
             if (isUnlocked) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -210,7 +220,8 @@ fun TitleItem(title: Title, isUnlocked: Boolean) {
                             text = "達成",
                             color = Color(0xFF4CAF50),
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
                         )
                     }
                 }
@@ -218,7 +229,8 @@ fun TitleItem(title: Title, isUnlocked: Boolean) {
                 Text(
                     text = "進行中",
                     color = Color.Gray,
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
+                    maxLines = 1
                 )
             }
         }
@@ -231,12 +243,13 @@ fun BonusBadge(text: String) {
         color = Color(0xFFE3F2FD),
         shape = RoundedCornerShape(4.dp)
     ) {
-        Text(
+        AutoResizedText(
             text = text,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
             fontSize = 10.sp,
             color = Color(0xFF1976D2),
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
         )
     }
 }
