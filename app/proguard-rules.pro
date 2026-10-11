@@ -26,6 +26,11 @@
 -keep class com.akito.million_egg.PlayerStateSerializer { *; }
 -keep class com.akito.million_egg.GameProgressSerializer { *; }
 
+# Keep AndroidX Startup, WorkManager, and Room Database (required by AdMob SDK)
+-keep class androidx.startup.** { *; }
+-keep class androidx.work.** { *; }
+-keep class androidx.room.** { *; }
+
 # Keep Google Play Services Ads (AdMob)
 -keep class com.google.android.gms.ads.** {
     public *;
