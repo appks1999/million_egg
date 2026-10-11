@@ -12,6 +12,7 @@ android {
         applicationId = "com.akito.million_egg"
         minSdk = 24
         targetSdk = 37
+
         versionCode = 2
         versionName = "1.1"
 
@@ -22,6 +23,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
