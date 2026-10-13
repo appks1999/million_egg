@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlin.math.pow
@@ -25,7 +26,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val MAX_POWER_LEVEL = 100
         const val MAX_AUTO_TAP_LEVEL = 60
-        const val BASE_UPGRADE_COST = 100L // 10Lから100Lへ10倍に変更
+        const val BASE_UPGRADE_COST = 100L
     }
 
     private val progressStore = application.gameProgressStore
@@ -44,35 +45,40 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _feverCountdown = MutableStateFlow(0)
     val feverCountdown: StateFlow<Int> = _feverCountdown.asStateFlow()
 
-    // クリティカルヒットイベント (座標付き)
     private val _criticalHitEvent = MutableSharedFlow<CriticalHitEvent>()
     val criticalHitEvent: SharedFlow<CriticalHitEvent> = _criticalHitEvent.asSharedFlow()
 
-    // ゴールド獲得イベント (座標付き)
     private val _goldEarnedEvent = MutableSharedFlow<GoldEarnedEvent>()
     val goldEarnedEvent: SharedFlow<GoldEarnedEvent> = _goldEarnedEvent.asSharedFlow()
 
+    private var isPlayerStateInitialized = false
+    private var isProgressInitialized = false
+
     init {
         viewModelScope.launch {
-            playerStateStore.data.collect { _playerState.value = it }
+            playerStateStore.data.collect { savedState ->
+                if (!isPlayerStateInitialized) {
+                    _playerState.value = savedState
+                    isPlayerStateInitialized = true
+                }
+            }
         }
         viewModelScope.launch {
-            progressStore.data.collect { _progress.value = it }
+            progressStore.data.collect { savedProgress ->
+                if (!isProgressInitialized) {
+                    _progress.value = savedProgress
+                    isProgressInitialized = true
+                }
+            }
         }
         
         startAutoTapLoop()
     }
 
-    /**
-     * 現在達成している最上位の称号によるボーナスを計算する（非加算方式）
-     */
     private fun calculateTitleBonuses(): Pair<Int, Double> {
-        val totalDamage = _progress.value.totalDamage
-        val highestTitle = Titles.filter { it.requirement <= totalDamage }.maxByOrNull { it.requirement }
-        
-        val powerBonus = highestTitle?.powerBonus ?: 0
-        val critBonus = highestTitle?.criticalBonus ?: 0.0
-        
+        val currentTitle = _playerState.value.currentTitle
+        val powerBonus = currentTitle?.powerBonus ?: 0
+        val critBonus = currentTitle?.criticalBonus ?: 0.0
         return Pair(powerBonus, critBonus)
     }
 
@@ -82,14 +88,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         
         var damage = (currentState.tapPower + powerBonus).toLong()
 
-        // 称号ボーナス込みのクリティカル率（最大 1.0）
         val totalCritRate = (currentState.criticalRate + critBonus).coerceAtMost(1.0)
         val isCritical = Random.nextDouble() < totalCritRate
         
         var earnedGold = 0L
         val isFever = _feverCountdown.value > 0
 
-        // 音声再生とゴールド計算
         if (isFever) {
             audioManager.playSound("fever")
             earnedGold = Random.nextLong(10, 31)
@@ -102,28 +106,25 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 _criticalHitEvent.emit(CriticalHitEvent(offset))
             }
-            // クリティカル時はゴールド獲得判定があっても演出をOFF
-            if (Random.nextDouble() < 0.01) { // テスト用100%
+            if (Random.nextDouble() < 0.01) {
                 earnedGold = Random.nextLong(1, 11)
             }
         } else {
             audioManager.playSound("tap")
-            // 金の卵確率
-            if (Random.nextDouble() < 0.02) { // テスト用100%
+            if (Random.nextDouble() < 0.02) {
                 earnedGold = Random.nextLong(1, 21)
                 audioManager.playSound("coin")
             }
-            // フィーバー突入判定
             if (Random.nextDouble() < 0.00025) {
                 startFever()
             }
         }
 
-        // ゴールド加算とUI通知
         if (earnedGold > 0) {
+            val newState = _playerState.value.copy(gold = _playerState.value.gold + earnedGold)
+            _playerState.value = newState
             viewModelScope.launch {
-                playerStateStore.updateData { it.copy(gold = it.gold + earnedGold) }
-                // クリティカルでない場合のみ、ゴールドのポップアップを表示
+                playerStateStore.updateData { newState }
                 if (!isCritical) {
                     _goldEarnedEvent.emit(GoldEarnedEvent(earnedGold, offset))
                 }
@@ -134,44 +135,51 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun updateProgress(damage: Long, isManualTap: Boolean) {
-        viewModelScope.launch {
-            progressStore.updateData { 
-                // すでに0以下の場合は何もしない
-                if (it.remainingTaps <= 0L) return@updateData it
+        val current = _progress.value
+        if (current.remainingTaps <= 0L) return
 
-                val isFeverActive = _feverCountdown.value > 0
-                val minRemaining = if (isManualTap) 0L else 1L
-                
-                val newRemaining = if (isFeverActive) it.remainingTaps else (it.remainingTaps - damage).coerceAtLeast(minRemaining)
-                
-                it.copy(
-                    remainingTaps = newRemaining,
-                    totalDamage = it.totalDamage + damage,
-                    tapCount = if (isManualTap) it.tapCount + 1 else it.tapCount,
-                    isCleared = newRemaining <= 0L
-                )
-            }
-            checkAchievements()
+        isProgressInitialized = true
+        val isFeverActive = _feverCountdown.value > 0
+        val minRemaining = if (isManualTap) 0L else 1L
+        
+        val newRemaining = if (isFeverActive) current.remainingTaps else (current.remainingTaps - damage).coerceAtLeast(minRemaining)
+        val newTotal = current.totalDamage + damage
+        
+        val newProgress = current.copy(
+            remainingTaps = newRemaining,
+            totalDamage = newTotal,
+            tapCount = if (isManualTap) current.tapCount + 1 else current.tapCount,
+            isCleared = newRemaining <= 0L
+        )
+        _progress.value = newProgress
+        checkAchievements(newTotal)
+
+        viewModelScope.launch {
+            progressStore.updateData { newProgress }
         }
     }
 
+    private var feverJob: kotlinx.coroutines.Job? = null
+
     private fun startFever() {
-        viewModelScope.launch {
+        feverJob?.cancel()
+        feverJob = viewModelScope.launch {
             _feverCountdown.value = 10
-            while (_feverCountdown.value > 0) {
+            while (_feverCountdown.value > 0 && isActive) {
                 delay(1000)
                 _feverCountdown.value -= 1
             }
         }
     }
 
-    private fun checkAchievements() {
-        val total = _progress.value.totalDamage
-        val unlockedTitle = Titles.filter { it.requirement <= total }.maxByOrNull { it.requirement }
+    private fun checkAchievements(totalDamage: Long = _progress.value.totalDamage) {
+        val unlockedTitle = Titles.filter { it.requirement <= totalDamage }.maxByOrNull { it.requirement }
         
         if (unlockedTitle != _playerState.value.currentTitle) {
+            val newState = _playerState.value.copy(currentTitle = unlockedTitle)
+            _playerState.value = newState
             viewModelScope.launch {
-                playerStateStore.updateData { it.copy(currentTitle = unlockedTitle) }
+                playerStateStore.updateData { newState }
             }
         }
     }
@@ -185,31 +193,38 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetGame() {
+        isPlayerStateInitialized = true
+        isProgressInitialized = true
+        val pState = PlayerState()
+        val prog = GameProgress()
+        _playerState.value = pState
+        _progress.value = prog
+        _feverCountdown.value = 0
+        _autoTapCountdown.value = 0
         viewModelScope.launch {
-            playerStateStore.updateData { PlayerState() }
-            progressStore.updateData { GameProgress() }
+            playerStateStore.updateData { pState }
+            progressStore.updateData { prog }
         }
     }
 
     fun markEndingAsSeen() {
+        val newProg = _progress.value.copy(hasSeenEnding = true)
+        _progress.value = newProg
         viewModelScope.launch {
-            progressStore.updateData { it.copy(hasSeenEnding = true) }
+            progressStore.updateData { newProg }
         }
     }
 
-    /**
-     * 強くてニューゲーム：ステータスや累計ダメージを引き継ぎ、残りタップ数を100万回にリセットし、開始日時を更新する
-     */
     fun startNewGamePlus() {
+        val newProg = _progress.value.copy(
+            remainingTaps = 1_000_000L,
+            isCleared = false,
+            startDateMillis = System.currentTimeMillis(),
+            hasSeenEnding = false
+        )
+        _progress.value = newProg
         viewModelScope.launch {
-            progressStore.updateData { 
-                it.copy(
-                    remainingTaps = 1_000_000L,
-                    isCleared = false,
-                    startDateMillis = System.currentTimeMillis(),
-                    hasSeenEnding = false
-                )
-            }
+            progressStore.updateData { newProg }
         }
     }
 
@@ -218,38 +233,31 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         audioManager.release()
     }
 
-    /**
-     * デバッグ用：ゴールドを加算する
-     */
+    fun clearForTest() {
+        viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        onCleared()
+    }
+
     fun debugAddGold(amount: Long) {
+        val newState = _playerState.value.copy(gold = _playerState.value.gold + amount)
+        _playerState.value = newState
         viewModelScope.launch {
-            playerStateStore.updateData { it.copy(gold = it.gold + amount) }
+            playerStateStore.updateData { newState }
         }
     }
 
-    /**
-     * デバッグ用：ダメージを加算する（残りタップ数を減らす）
-     */
     fun debugAddDamage(amount: Long) {
         updateProgress(amount, isManualTap = false)
     }
 
-    /**
-     * デバッグ用：強制的にフィーバーを開始する
-     */
     fun debugTriggerFever() {
         startFever()
     }
 
-    /**
-     * デバッグ用：強制的にクリティカルヒットを発生させる
-     */
     fun debugTriggerCritical() {
         viewModelScope.launch {
-            // デバッグ時は中央付近をダミー座標として渡す
             val dummyOffset = Offset(540f, 1000f)
             _criticalHitEvent.emit(CriticalHitEvent(dummyOffset))
-            // ダメージも与える (1.5倍〜2.0倍のランダム倍率)
             val currentState = _playerState.value
             val (powerBonus, _) = calculateTitleBonuses()
             val baseDamage = (currentState.tapPower + powerBonus).toDouble()
@@ -260,8 +268,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- アップグレード処理 (ゴールド消費) ---
-
     fun getUpgradeCost(level: Int): Long {
         if (level == 0) return BASE_UPGRADE_COST
         return (BASE_UPGRADE_COST * 1.15.pow(level.toDouble())).toLong()
@@ -271,14 +277,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val currentState = _playerState.value
         val cost = if (currentState.hasFreeUpgrade) 0L else getUpgradeCost(currentState.powerLevel)
         if ((currentState.gold >= cost || currentState.hasFreeUpgrade) && currentState.powerLevel < MAX_POWER_LEVEL) {
+            val newState = currentState.copy(
+                gold = if (currentState.hasFreeUpgrade) currentState.gold else currentState.gold - cost,
+                powerLevel = currentState.powerLevel + 1,
+                hasFreeUpgrade = false
+            )
+            _playerState.value = newState
             viewModelScope.launch {
-                playerStateStore.updateData { 
-                    it.copy(
-                        gold = if (it.hasFreeUpgrade) it.gold else it.gold - cost,
-                        powerLevel = it.powerLevel + 1,
-                        hasFreeUpgrade = false // 使用したらフラグを戻す
-                    )
-                }
+                playerStateStore.updateData { newState }
                 audioManager.playSound("status_up")
             }
         }
@@ -286,20 +292,19 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun upgradeCritical() {
         val currentState = _playerState.value
-        val ( _, titleCritBonus) = calculateTitleBonuses()
-        // 称号ボーナス込みで 1.0 (100%) になったらMAX
+        val (_, titleCritBonus) = calculateTitleBonuses()
         val currentTotalCrit = currentState.criticalRate + titleCritBonus
         
         val cost = if (currentState.hasFreeUpgrade) 0L else getUpgradeCost(currentState.criticalLevel)
         if ((currentState.gold >= cost || currentState.hasFreeUpgrade) && currentTotalCrit < 1.0) {
+            val newState = currentState.copy(
+                gold = if (currentState.hasFreeUpgrade) currentState.gold else currentState.gold - cost,
+                criticalLevel = currentState.criticalLevel + 1,
+                hasFreeUpgrade = false
+            )
+            _playerState.value = newState
             viewModelScope.launch {
-                playerStateStore.updateData { 
-                    it.copy(
-                        gold = if (it.hasFreeUpgrade) it.gold else it.gold - cost,
-                        criticalLevel = it.criticalLevel + 1,
-                        hasFreeUpgrade = false // 使用したらフラグを戻す
-                    )
-                }
+                playerStateStore.updateData { newState }
                 audioManager.playSound("status_up")
             }
         }
@@ -309,25 +314,24 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val currentState = _playerState.value
         val cost = if (currentState.hasFreeUpgrade) 0L else getUpgradeCost(currentState.autoTapLevel)
         if ((currentState.gold >= cost || currentState.hasFreeUpgrade) && currentState.autoTapLevel < MAX_AUTO_TAP_LEVEL) {
+            val newState = currentState.copy(
+                gold = if (currentState.hasFreeUpgrade) currentState.gold else currentState.gold - cost,
+                autoTapLevel = currentState.autoTapLevel + 1,
+                hasFreeUpgrade = false
+            )
+            _playerState.value = newState
             viewModelScope.launch {
-                playerStateStore.updateData { 
-                    it.copy(
-                        gold = if (it.hasFreeUpgrade) it.gold else it.gold - cost,
-                        autoTapLevel = it.autoTapLevel + 1,
-                        hasFreeUpgrade = false // 使用したらフラグを戻す
-                    )
-                }
+                playerStateStore.updateData { newState }
                 audioManager.playSound("status_up")
             }
         }
     }
 
-    /**
-     * リワード報酬：無料アップグレード権を付与
-     */
     fun grantFreeUpgrade() {
+        val newState = _playerState.value.copy(hasFreeUpgrade = true)
+        _playerState.value = newState
         viewModelScope.launch {
-            playerStateStore.updateData { it.copy(hasFreeUpgrade = true) }
+            playerStateStore.updateData { newState }
         }
     }
 
@@ -337,21 +341,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 val interval = _playerState.value.autoTapInterval
                 if (interval > 0) {
                     _autoTapCountdown.value = interval
-                    while (_autoTapCountdown.value > 0) {
+                    while (_autoTapCountdown.value > 0 && isActive) {
                         delay(1000)
                         val currentInterval = _playerState.value.autoTapInterval
                         if (currentInterval < interval && currentInterval > 0) break 
                         _autoTapCountdown.value -= 1
                     }
                     
-                    if (_autoTapCountdown.value <= 0) {
+                    if (_autoTapCountdown.value <= 0 && _playerState.value.autoTapInterval > 0) {
                         val currentState = _playerState.value
                         val (powerBonus, _) = calculateTitleBonuses()
                         val damage = (currentState.tapPower + powerBonus).toLong()
                         updateProgress(damage, isManualTap = false)
                     }
                 } else {
-                    delay(1000)
+                    _playerState.first { it.autoTapInterval > 0 }
                 }
             }
         }

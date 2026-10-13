@@ -32,10 +32,13 @@ class AchievementTest {
         Dispatchers.setMain(testDispatcher)
         val context = ApplicationProvider.getApplicationContext<Application>()
         viewModel = GameViewModel(context)
+        viewModel.resetGame()
+        testDispatcher.scheduler.runCurrent()
     }
 
     @After
     fun tearDown() {
+        viewModel.clearForTest()
         Dispatchers.resetMain()
     }
 
@@ -46,17 +49,6 @@ class AchievementTest {
 
     @Test
     fun `reaching 5000 damage unlocks beginner title`() = runTest {
-        // Manually trigger damage update to avoid long tapping loops in unit tests
-        // Since updateProgress is private, we'll use a hack or verify via onTap
-        // But for unit test of the LOGIC, we can verify titles list and viewModel checkAchievements
-        
-        // Simulate progress update logic by calling onTap until 5000
-        // (In a real scenario, we might make updateProgress internal or use a Test-Specific ViewModel)
-        
-        // Let's use a simpler approach: verify the checkAchievements logic by observing state
-        // We'll call onTap. Default power is 1. 5000 taps might be slow, but it's reliable.
-        
-        // Actually, let's just check the first milestone
         viewModel.debugAddDamage(5000L)
         runCurrent()
         

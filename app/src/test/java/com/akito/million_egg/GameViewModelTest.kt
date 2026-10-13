@@ -26,10 +26,13 @@ class GameViewModelTest {
         Dispatchers.setMain(testDispatcher)
         val context = ApplicationProvider.getApplicationContext<Application>()
         viewModel = GameViewModel(context)
+        viewModel.resetGame()
+        testDispatcher.scheduler.runCurrent()
     }
 
     @After
     fun tearDown() {
+        viewModel.clearForTest()
         Dispatchers.resetMain()
     }
 
@@ -52,6 +55,9 @@ class GameViewModelTest {
 
     @Test
     fun `upgrading power increases damage`() = runTest {
+        viewModel.debugAddGold(1000)
+        runCurrent()
+
         viewModel.upgradePower() 
         runCurrent()
         
@@ -65,24 +71,24 @@ class GameViewModelTest {
 
     @Test
     fun `auto tap reduces remaining taps but does not increase tapCount`() = runTest {
-        viewModel.upgradeAutoTap() // Lv 1 (30s interval)
+        viewModel.debugAddGold(1000)
+        runCurrent()
+
+        viewModel.upgradeAutoTap() // Lv 1 (60s interval)
         runCurrent()
         
-        // Wait for 31 seconds to trigger auto tap
-        advanceTimeBy(31000)
+        // Wait for auto tap interval to trigger
+        advanceTimeBy(61000)
+        runCurrent()
         
         val damage = 1_000_000L - viewModel.progress.value.remainingTaps
         assertTrue(damage >= 1)
         assertEquals(0, viewModel.progress.value.tapCount)
+        viewModel.clearForTest()
     }
 
     @Test
     fun `achieving total damage unlocks title`() = runTest {
-        // We'll simulate 5000 damage
-        // To speed up, we could just check Title list, but let's do a few taps
-        // Since we want to test "Achievement transitions", 5000 might take too long in real taps
-        // But in runTest with StandardTestDispatcher, it's just loop iterations.
-        
         viewModel.debugAddDamage(5000L)
         runCurrent()
         
@@ -92,6 +98,7 @@ class GameViewModelTest {
     @Test
     fun `reaching 0 remaining taps triggers clear state and reset works`() = runTest {
         viewModel.debugAddDamage(1_000_000L)
+        viewModel.onTap()
         runCurrent()
         
         assertTrue(viewModel.progress.value.isCleared)
